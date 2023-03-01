@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+
+<head>
+    <title>Self-Driving Car</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+    <div id="verticalButtons">
+        <button onclick="followToggle()" id="btFollowToggle">Follow Best</button>
+        <button onclick="save()" >Save Best</button>
+        <button onclick="discard()">Delete Saved</button>
+        <button onclick="regenerate()">Regenrate</button>
+        <button onclick="mut_best()">Mutate</button>
+        <button onclick="save_mut()">Save & Mutate</button>
+    </div>
+    <canvas id="mainCanv"></canvas>
+    <canvas id="networkCanv"></canvas>
+
+    <script src="math.js"></script>
+    <script src="network.js"></script>
+    <script src="road.js"></script>
+    <script src="controls.js"></script>
+    <script src="car.js"></script>
+    <script src="sensor.js"></script>
+    <script src="visualizer.js"></script>
+    <script src="main.js"></script>
+</body>

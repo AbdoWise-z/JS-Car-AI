@@ -1,0 +1,33 @@
+body {
+    margin: 0px;
+    background: darkgray;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#verticalButtons{
+    display: flex;
+    flex-direction: column;
+}
+
+button {
+    border: none;
+    border-radius: 5px;
+    padding: 5px;
+    margin: 8px;
+    cursor: pointer;
+}
+
+button:hover{
+    background: gray;
+}
+
+#mainCanv {
+    background: lightgray;
+}
+
+#networkCanv{
+    background: black;
+}

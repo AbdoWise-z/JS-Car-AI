@@ -1,0 +1,280 @@
+const CarCanvas = document.getElementById("mainCanv");
+CarCanvas.height = window.innerHeight;
+CarCanvas.width = 200;
+
+const networkCanvas = document.getElementById("networkCanv");
+networkCanvas.height = window.innerHeight;
+networkCanvas.width = 300;
+
+const carCtx     = CarCanvas.getContext("2d");
+const networkCtx = networkCanvas.getContext("2d");
+
+const carWidth = 32;
+let Time;
+let TimeScale = 1;
+let DeltaTimeCap = 0.05; //0.03 seconds (20 frames)
+let followBest = false;
+let BestAI;
+let AFK = false;
+let ALLDead = false;
+
+const road = new Road(CarCanvas.width / 2 , CarCanvas.width * 0.95);
+const car = new Car(road.getLaneCenter(1), 100, carWidth, 50 , HUMAN);
+let   AIAgents = [];
+let   AIAgentsScores = [];
+let   traffic  = [];
+let   PointGates = [-150 , -350 , -650];
+let AICount = 1000;
+
+let   AutoMutateTimer = 200;
+let   AutoMutateTimeLimit = 200;
+let   AutoMutateY = -90000;
+let   MutationFactor = 0.1;
+
+
+followToggle();
+regenerate();
+
+
+//Start the animation loop
+Time = performance.now();
+requestAnimationFrame(animate);
+
+function ResetFrame(){
+    CarCanvas.height = window.innerHeight;
+    networkCanvas.height = window.innerHeight;
+    //canvas.width = window.innerWidth;
+}
+
+function animate(time){
+    let nt = performance.now();
+    let dt = (nt - Time) / 1000 * TimeScale;
+
+    AutoMutateTimer -= dt;
+    
+    if (dt > DeltaTimeCap)
+        dt = DeltaTimeCap;
+
+    Time = nt;
+    ResetFrame();
+
+    for (let i = 0;i < traffic.length;i++){
+        traffic[i].update(dt , road.borders , []);
+    }
+
+    for (let i = 0;i < AIAgents.length;i++){
+        AIAgents[i].update(dt , road.borders , traffic);
+        let s = 0;
+        for (let j = 0;j < PointGates.length;j++){
+            if (AIAgents[i].y <= PointGates[j]){
+                s++;
+                //console.log("adding a score for: " , i , " , passed gate: " , j);
+            }
+        }
+        if (s > AIAgentsScores[i])
+            AIAgentsScores[i] = s;
+    }
+
+    let followCar = car;
+    let bestID = 0;
+    BestAI = AIAgents[0];
+    AllDead = AIAgents[0].damaged;
+    for (let i = 1;i < AIAgents.length;i++){
+        AllDead = AllDead && AIAgents[i].damaged;
+        if (AIAgentsScores[i] > AIAgentsScores[bestID] || (AIAgentsScores[i] == AIAgentsScores[bestID] && AIAgents[i].y < AIAgents[bestID].y)){
+            bestID = i;
+        }
+    }
+
+    BestAI = AIAgents[bestID];
+
+    if (followBest)
+        followCar = BestAI;
+
+    car.update(dt , road.borders , traffic);
+    
+    carCtx.save();
+
+    carCtx.translate(0 , -followCar.y + CarCanvas.height * 0.7);
+
+    road.draw(carCtx);
+
+    for (let i = 0;i < traffic.length;i++){
+        traffic[i].draw(carCtx , "red"); 
+    }
+    for (let i = 0;i < PointGates.length;i++){
+        PointGates[i] -= traffic[0].speed * dt;
+    }
+
+    carCtx.globalAlpha = 0.2;
+    for (let i = 0;i < AIAgents.length;i++){
+        AIAgents[i].draw(carCtx , "green"); 
+    }
+
+    carCtx.globalAlpha = 0.6;
+    for (let i = 0;i < PointGates.length;i++){
+        drawLine(carCtx , new vec2(0 , PointGates[i]) , new vec2(200 , PointGates[i]) , 2 , true , [15 , 15] , "blue");
+    }
+    
+    carCtx.globalAlpha = 1;
+    
+    car.draw(carCtx , "blue");
+    
+    carCtx.restore();
+
+    carCtx.fillRect(0 , 10 , abs(car.WheelAngle * 200) / car.WheelAnglerCap , 10);
+    carCtx.fillRect(0 , 0 , abs(car.speed * 200) / car.maxSpeed , 10);
+
+    networkCtx.lineDashOffset = -time/60;
+    Visualizer.drawNetwork(networkCtx , BestAI.controls.brain);
+
+    if (AllDead || BestAI.y < AutoMutateY || AutoMutateTimer <= 0){
+        AutoMutateTimer = AutoMutateTimeLimit;
+        console.log("Auto mutating...");
+        mut_best();
+    }
+
+    requestAnimationFrame(animate);
+}
+
+function followToggle(){
+    followBest = !followBest;
+    if (followBest)
+        document.getElementById("btFollowToggle").innerHTML = "Control Car";
+    else
+        document.getElementById("btFollowToggle").innerHTML = "Follow Best";
+}
+
+function save(){
+    //WebGLFramebufferd;
+    localStorage.setItem("bestCar" , JSON.stringify(BestAI.controls.brain));
+    console.log("saved");
+}
+
+function discard(){
+    localStorage.removeItem("bestCar");
+    console.log("deleted");
+}
+
+function initializeTraffic(){
+    traffic = [
+        new Car(road.getLaneCenter(1), -150, carWidth, 50 , DUMMY , 320),
+        new Car(road.getLaneCenter(0), -150, carWidth, 50 , DUMMY , 320),
+        new Car(road.getLaneCenter(0), -350, carWidth, 50 , DUMMY , 320),
+        new Car(road.getLaneCenter(2), -350, carWidth, 50 , DUMMY , 320),
+        new Car(road.getLaneCenter(1), -650, carWidth, 50 , DUMMY , 320),
+        new Car(road.getLaneCenter(2), -650, carWidth, 50 , DUMMY , 320),
+        new Car(road.getLaneCenter(1), -850, carWidth, 50 , DUMMY , 320),
+        new Car(road.getLaneCenter(0), -850, carWidth, 50 , DUMMY , 320),
+        new Car(road.getLaneCenter(2), -1000, carWidth, 50 , DUMMY , 320),
+        new Car(road.getLaneCenter(0), -1000, carWidth, 50 , DUMMY , 320),
+        new Car(road.getLaneCenter(1), -1160, carWidth, 50 , DUMMY , 320),
+        new Car(road.getLaneCenter(0), -1100, carWidth, 50 , DUMMY , 320)
+    ];
+    PointGates = [-150 , -350 , -650 , -850 , -1000 , -1100 , -1160];
+}
+
+function mut_best(){
+    AutoMutateTimer = AutoMutateTimeLimit;
+    initializeTraffic();
+    
+    if (!localStorage.getItem("bestCar") || AFK){
+        save();
+    }
+
+    AIAgents = [];
+    AIAgentsScores = [];
+//i % road.laneCount
+    for (let i = 0;i < AICount;i++){
+        AIAgents.push(new Car(road.getLaneCenter(1), 100, carWidth, 50 , AI , 360));
+        AIAgentsScores.push(0);
+        AIAgents[i].controls.brain = JSON.parse(localStorage.getItem("bestCar"));
+        NeuralNetwork.Mutate(AIAgents[i].controls.brain , MutationFactor);
+    }
+
+    AIAgents[0].controls.brain = JSON.parse(localStorage.getItem("bestCar")); //the normal brain
+    
+}
+
+function save_mut(){
+    AutoMutateTimer = AutoMutateTimeLimit;
+    initializeTraffic();
+    
+    
+    save();
+
+    AIAgents = [];
+    AIAgentsScores = [];
+    
+    for (let i = 0;i < AICount;i++){
+        AIAgents.push(new Car(road.getLaneCenter(1), 100, carWidth, 50 , AI , 360));
+        AIAgentsScores.push(0);
+        AIAgents[i].controls.brain = JSON.parse(localStorage.getItem("bestCar"));
+        NeuralNetwork.Mutate(AIAgents[i].controls.brain , MutationFactor);
+    }
+
+    AIAgents[0].controls.brain = JSON.parse(localStorage.getItem("bestCar")); //the normal brain
+    
+}
+
+
+function regenerate(){
+    AutoMutateTimer = AutoMutateTimeLimit;
+    initializeTraffic();
+    
+    AIAgents = [];
+    AIAgentsScores = [];
+    
+    for (let i = 0;i < AICount;i++){
+        AIAgents.push(new Car(road.getLaneCenter(i % road.laneCount), 100, carWidth, 50 , AI , 360));
+        AIAgentsScores.push(0);
+    }
+    
+    if (localStorage.getItem("bestCar")){
+        AIAgents[0].controls.brain = JSON.parse(localStorage.getItem("bestCar"));
+    }
+}
+
+
+function drawLine(ctx , p1 , p2 , width=6 , dashed=false , dashWidth=[] , style="black"){
+    ctx.lineWidth = width;
+    ctx.strokeStyle = style;
+    ctx.beginPath();
+    ctx.setLineDash(dashWidth);
+    ctx.moveTo(p1.x , p1.y);
+    ctx.lineTo(p2.x , p2.y);
+    ctx.stroke();
+    ctx.closePath();
+}
+
+
+function CreatePackUp(name){
+    if (!localStorage.getItem("bestCar")){
+        console.error("Didn't find any saved cars");
+        return;
+    }
+
+    if (name == "bestCar"){
+        console.error("Pick other name");
+        return;
+    }
+
+    localStorage.setItem(name , localStorage.getItem("bestCar"));
+    console.info("packup created");
+}
+
+
+function RestorePackUp(name){
+    if (!localStorage.getItem(name)){
+        console.error("Didn't find any saved packup");
+        return;
+    }
+
+    if (name == "bestCar"){
+        console.error("Pick other name");
+        return;
+    }
+
+    localStorage.setItem("bestCar" , localStorage.getItem(name));
+    console.info("packup restored");
+}
